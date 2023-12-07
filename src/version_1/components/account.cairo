@@ -57,12 +57,9 @@ mod AccountComponent {
         fn __execute__(
             self: @ComponentState<TContractState>, mut calls: Array<Call>
         ) -> Array<Span<felt252>> {
-            // Avoid calls from other contracts
-            // https://github.com/OpenZeppelin/cairo-contracts/issues/344
             let sender = get_caller_address();
             assert(sender.is_zero(), Errors::INVALID_CALLER);
 
-            // Check tx version
             let tx_info = get_tx_info().unbox();
             let version = tx_info.version;
             if version != TRANSACTION_VERSION {
@@ -72,15 +69,12 @@ mod AccountComponent {
             _execute_calls(calls)
         }
 
-        /// Verifies the validity of the signature for the current transaction.
-        /// This function is used by the protocol to verify `invoke` transactions.
         fn __validate__<+ValidSignatureTrait<TContractState>>(
             self: @ComponentState<TContractState>, mut calls: Array<Call>
         ) -> felt252 {
             self.validate_transaction()
         }
 
-        /// Verifies that the given signature is valid for the given hash.
         fn is_valid_signature<+ValidSignatureTrait<TContractState>>(
             self: @ComponentState<TContractState>, hash: felt252, signature: Array<felt252>
         ) -> felt252 {
@@ -96,21 +90,16 @@ mod AccountComponent {
     impl InternalImpl<
         TContractState, +HasComponent<TContractState>, +Drop<TContractState>
     > of InternalTrait<TContractState> {
-        /// Initializes the account by setting the initial public key
-        /// and registering the ISRC6 interface Id.
         fn initializer(ref self: ComponentState<TContractState>, public_key: felt252) {
             self._set_public_key(public_key);
         }
 
-        /// Validates that the caller is the account itself. Otherwise it reverts.
         fn assert_only_self(self: @ComponentState<TContractState>) {
             let caller = get_caller_address();
             let self = get_contract_address();
             assert(self == caller, Errors::UNAUTHORIZED);
         }
 
-        /// Validates the signature for the current transaction.
-        /// Returns the short string `VALID` if valid, otherwise it reverts.
         fn validate_transaction<+ValidSignatureTrait<TContractState>>(
             self: @ComponentState<TContractState>
         ) -> felt252 {
@@ -121,15 +110,11 @@ mod AccountComponent {
             starknet::VALIDATED
         }
 
-        /// Sets the public key without validating the caller.
-        /// The usage of this method outside the `set_public_key` function is discouraged.
         fn _set_public_key(ref self: ComponentState<TContractState>, new_public_key: felt252) {
             self.Account_public_key.write(new_public_key);
             self.emit(OwnerAdded { new_owner_guid: new_public_key });
         }
 
-        /// Returns whether the given signature is valid for the given hash
-        /// using the account's current public key.
         fn _is_valid_signature<impl Validator: ValidSignatureTrait<TContractState>>(
             self: @ComponentState<TContractState>, hash: felt252, signature: Span<felt252>
         ) -> bool {
