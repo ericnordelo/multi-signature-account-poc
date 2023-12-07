@@ -1,0 +1,1 @@
+= Account Component potential designs for offering multiple signature validation mechanisms
