@@ -7,10 +7,16 @@ trait ISRC6<TState> {
     fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
 }
 
+trait ValidSignatureTrait {
+    fn is_valid_signature(
+        msg_hash: felt252, verifiable_key: Span<felt252>, signature: Span<felt252>
+    ) -> bool;
+}
+
 /// # Account Component
 #[starknet::component]
 mod AccountComponent {
-    use accounts_poc::version_2::components::signature_validator::ValidSignatureTrait;
+    // use accounts_poc::version_2::components::signature_validator::ValidSignatureTrait;
     use starknet::get_caller_address;
     use starknet::get_contract_address;
     use starknet::get_tx_info;
@@ -51,7 +57,10 @@ mod AccountComponent {
 
     #[embeddable_as(SRC6Impl)]
     impl SRC6<
-        TContractState, +HasComponent<TContractState>, +Drop<TContractState>
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +super::ValidSignatureTrait,
     > of super::ISRC6<ComponentState<TContractState>> {
         /// Executes a list of calls from the account.
         fn __execute__(
@@ -69,13 +78,11 @@ mod AccountComponent {
             _execute_calls(calls)
         }
 
-        fn __validate__<+ValidSignatureTrait<TContractState>>(
-            self: @ComponentState<TContractState>, mut calls: Array<Call>
-        ) -> felt252 {
+        fn __validate__(self: @ComponentState<TContractState>, mut calls: Array<Call>) -> felt252 {
             self.validate_transaction()
         }
 
-        fn is_valid_signature<+ValidSignatureTrait<TContractState>>(
+        fn is_valid_signature(
             self: @ComponentState<TContractState>, hash: felt252, signature: Array<felt252>
         ) -> felt252 {
             if self._is_valid_signature(hash, signature.span()) {
@@ -88,7 +95,10 @@ mod AccountComponent {
 
     #[generate_trait]
     impl InternalImpl<
-        TContractState, +HasComponent<TContractState>, +Drop<TContractState>
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +super::ValidSignatureTrait
     > of InternalTrait<TContractState> {
         fn initializer(ref self: ComponentState<TContractState>, public_key: felt252) {
             self._set_public_key(public_key);
@@ -100,9 +110,7 @@ mod AccountComponent {
             assert(self == caller, Errors::UNAUTHORIZED);
         }
 
-        fn validate_transaction<+ValidSignatureTrait<TContractState>>(
-            self: @ComponentState<TContractState>
-        ) -> felt252 {
+        fn validate_transaction(self: @ComponentState<TContractState>) -> felt252 {
             let tx_info = get_tx_info().unbox();
             let tx_hash = tx_info.transaction_hash;
             let signature = tx_info.signature;
@@ -115,12 +123,12 @@ mod AccountComponent {
             self.emit(OwnerAdded { new_owner_guid: new_public_key });
         }
 
-        fn _is_valid_signature<impl Validator: ValidSignatureTrait<TContractState>>(
+        fn _is_valid_signature(
             self: @ComponentState<TContractState>, hash: felt252, signature: Span<felt252>
         ) -> bool {
             let contract = HasComponent::get_contract(self);
             let public_key = array![self.Account_public_key.read()].span();
-            Validator::is_valid_signature(contract, hash, public_key, signature)
+            super::ValidSignatureTrait::is_valid_signature(hash, public_key, signature)
         }
     }
 
