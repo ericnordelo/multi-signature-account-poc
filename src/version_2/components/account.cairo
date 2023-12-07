@@ -1,11 +1,20 @@
+use starknet::account::Call;
+
+#[starknet::interface]
+trait ISRC6<TState> {
+    fn __execute__(self: @TState, calls: Array<Call>) -> Array<Span<felt252>>;
+    fn __validate__(self: @TState, calls: Array<Call>) -> felt252;
+    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}
+
 /// # Account Component
 #[starknet::component]
 mod AccountComponent {
     use accounts_poc::version_2::components::signature_validator::ValidSignatureTrait;
-    use starknet::account::Call;
     use starknet::get_caller_address;
     use starknet::get_contract_address;
     use starknet::get_tx_info;
+    use super::Call;
 
     const TRANSACTION_VERSION: felt252 = 1;
     // 2**128 + TRANSACTION_VERSION
@@ -40,21 +49,12 @@ mod AccountComponent {
         const UNAUTHORIZED: felt252 = 'Account: unauthorized';
     }
 
-    #[generate_trait]
-    impl InternalImpl<
+    #[embeddable_as(SRC6Impl)]
+    impl SRC6<
         TContractState, +HasComponent<TContractState>, +Drop<TContractState>
-    > of InternalTrait<TContractState> {
-        fn initializer(ref self: ComponentState<TContractState>, public_key: felt252) {
-            self._set_public_key(public_key);
-        }
-
-        fn assert_only_self(self: @ComponentState<TContractState>) {
-            let caller = get_caller_address();
-            let self = get_contract_address();
-            assert(self == caller, Errors::UNAUTHORIZED);
-        }
-
-        fn execute_transaction(
+    > of super::ISRC6<ComponentState<TContractState>> {
+        /// Executes a list of calls from the account.
+        fn __execute__(
             self: @ComponentState<TContractState>, mut calls: Array<Call>
         ) -> Array<Span<felt252>> {
             let sender = get_caller_address();
@@ -67,6 +67,37 @@ mod AccountComponent {
             }
 
             _execute_calls(calls)
+        }
+
+        fn __validate__<+ValidSignatureTrait<TContractState>>(
+            self: @ComponentState<TContractState>, mut calls: Array<Call>
+        ) -> felt252 {
+            self.validate_transaction()
+        }
+
+        fn is_valid_signature<+ValidSignatureTrait<TContractState>>(
+            self: @ComponentState<TContractState>, hash: felt252, signature: Array<felt252>
+        ) -> felt252 {
+            if self._is_valid_signature(hash, signature.span()) {
+                starknet::VALIDATED
+            } else {
+                0
+            }
+        }
+    }
+
+    #[generate_trait]
+    impl InternalImpl<
+        TContractState, +HasComponent<TContractState>, +Drop<TContractState>
+    > of InternalTrait<TContractState> {
+        fn initializer(ref self: ComponentState<TContractState>, public_key: felt252) {
+            self._set_public_key(public_key);
+        }
+
+        fn assert_only_self(self: @ComponentState<TContractState>) {
+            let caller = get_caller_address();
+            let self = get_contract_address();
+            assert(self == caller, Errors::UNAUTHORIZED);
         }
 
         fn validate_transaction<+ValidSignatureTrait<TContractState>>(

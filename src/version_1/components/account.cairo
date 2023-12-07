@@ -1,20 +1,11 @@
-use starknet::account::Call;
-
-#[starknet::interface]
-trait ISRC6<TState> {
-    fn __execute__(self: @TState, calls: Array<Call>) -> Array<Span<felt252>>;
-    fn __validate__(self: @TState, calls: Array<Call>) -> felt252;
-    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
-}
-
 /// # Account Component
 #[starknet::component]
 mod AccountComponent {
     use accounts_poc::version_1::components::signature_validator::ValidSignatureTrait;
+    use starknet::account::Call;
     use starknet::get_caller_address;
     use starknet::get_contract_address;
     use starknet::get_tx_info;
-    use super::Call;
 
     const TRANSACTION_VERSION: felt252 = 1;
     // 2**128 + TRANSACTION_VERSION
@@ -49,43 +40,6 @@ mod AccountComponent {
         const UNAUTHORIZED: felt252 = 'Account: unauthorized';
     }
 
-    #[embeddable_as(SRC6Impl)]
-    impl SRC6<
-        TContractState, +HasComponent<TContractState>, +Drop<TContractState>
-    > of super::ISRC6<ComponentState<TContractState>> {
-        /// Executes a list of calls from the account.
-        fn __execute__(
-            self: @ComponentState<TContractState>, mut calls: Array<Call>
-        ) -> Array<Span<felt252>> {
-            let sender = get_caller_address();
-            assert(sender.is_zero(), Errors::INVALID_CALLER);
-
-            let tx_info = get_tx_info().unbox();
-            let version = tx_info.version;
-            if version != TRANSACTION_VERSION {
-                assert(version == QUERY_VERSION, Errors::INVALID_TX_VERSION);
-            }
-
-            _execute_calls(calls)
-        }
-
-        fn __validate__<+ValidSignatureTrait<TContractState>>(
-            self: @ComponentState<TContractState>, mut calls: Array<Call>
-        ) -> felt252 {
-            self.validate_transaction()
-        }
-
-        fn is_valid_signature<+ValidSignatureTrait<TContractState>>(
-            self: @ComponentState<TContractState>, hash: felt252, signature: Array<felt252>
-        ) -> felt252 {
-            if self._is_valid_signature(hash, signature.span()) {
-                starknet::VALIDATED
-            } else {
-                0
-            }
-        }
-    }
-
     #[generate_trait]
     impl InternalImpl<
         TContractState, +HasComponent<TContractState>, +Drop<TContractState>
@@ -98,6 +52,21 @@ mod AccountComponent {
             let caller = get_caller_address();
             let self = get_contract_address();
             assert(self == caller, Errors::UNAUTHORIZED);
+        }
+
+        fn execute_transaction(
+            self: @ComponentState<TContractState>, mut calls: Array<Call>
+        ) -> Array<Span<felt252>> {
+            let sender = get_caller_address();
+            assert(sender.is_zero(), Errors::INVALID_CALLER);
+
+            let tx_info = get_tx_info().unbox();
+            let version = tx_info.version;
+            if version != TRANSACTION_VERSION {
+                assert(version == QUERY_VERSION, Errors::INVALID_TX_VERSION);
+            }
+
+            _execute_calls(calls)
         }
 
         fn validate_transaction<+ValidSignatureTrait<TContractState>>(
